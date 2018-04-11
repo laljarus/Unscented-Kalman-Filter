@@ -54,6 +54,49 @@ UKF::UKF() {
 
   Hint: one or more values initialized above might be wildly off...
   */
+  is_initialized_ = false;
+
+  previous_timestamp_ = 0;
+
+  n_x_ = 5;
+  n_aug_ = 7;
+  lambda_ = 3 - n_x_;
+  lambda_aug_ = 3 - n_aug_;
+
+  double weight_0 = lambda_aug_/(lambda_aug_+n_aug);
+  weights_(0) = weight_0;
+  for (int i=1; i<2*n_aug_+1; i++) {  //2n+1 weights
+    double weight = 0.5/(n_aug_+lambda_aug_);
+    weights_(i) = weight;
+  }
+
+  R_laser_ = MatrixXd(2, 2);
+  R_radar_ = MatrixXd(3, 3);
+  H_laser_ = MatrixXd(2, 4);
+
+  R_laser_<< std_laspx_*std_laspx_,0,
+		     0, std_laspx_*std_laspx_;
+
+  R_radar_<< std_radr*std_radr_,0,0,
+		     0, std_radphi_*std_radphi_,0,
+			 0,0, std_radrd_*std_radrd_;
+
+  H_laser_<<1,0,0,0,
+  		    0,1,0,0;
+
+  MatrixXd Q = MatrixXd(2,2);
+  Q << pow(std_a,2),0,
+       0,pow(std_yawdd,2);
+
+  x_<< 0,0,0,0,0;
+
+  P_<< 1,0,0,0,0,
+	   0,1,0,0,0,
+	   0,0,1,0,0,
+	   0,0,0,1,0,
+	   0,0,0,0,1;
+
+
 }
 
 UKF::~UKF() {}
@@ -69,6 +112,29 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
   Complete this function! Make sure you switch between lidar and radar
   measurements.
   */
+  if(!is_initialized_){
+
+	if(meas_package.sensor_type_ == MeasurementPackage::RADAR){
+
+		double rho = measurement_pack.raw_measurements_[0];
+		double theta = measurement_pack.raw_measurements_[1];
+		double rho_dot = measurement_pack.raw_measurements_[2];
+
+		x_(0) = rho*cos(theta);
+		x_(1) = rho*sin(theta);
+		x_(2) = rho_dot;
+
+	}else {
+
+		x_(0) = measurement_pack.raw_measurements_[0];
+		x_(1) = measurement_pack.raw_measurements_[1];
+
+	}
+
+
+  }
+
+
 }
 
 /**

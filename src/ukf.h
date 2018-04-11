@@ -34,6 +34,10 @@ public:
   ///* time when the state is true, in us
   long long time_us_;
 
+  // previous time stamp
+  long long previous_timestamp_
+
+
   ///* Process noise standard deviation longitudinal acceleration in m/s^2
   double std_a_;
 
@@ -66,6 +70,20 @@ public:
 
   ///* Sigma point spreading parameter
   double lambda_;
+  double lambda_aug_;
+
+  // H matrix for laser
+  MatrixXd H_laser_;
+
+  // Q matrix for process noise
+  MatrixXd Q_;
+
+  // R matrix for Laser sensor
+  MatrixXd R_laser_;
+
+  // R matrix for Radar sensor
+  MatrixXd R_radar_
+
 
 
   /**
