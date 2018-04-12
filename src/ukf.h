@@ -35,7 +35,7 @@ public:
   long long time_us_;
 
   // previous time stamp
-  long long previous_timestamp_
+  long long previous_timestamp_;
 
 
   ///* Process noise standard deviation longitudinal acceleration in m/s^2
@@ -68,6 +68,9 @@ public:
   ///* Augmented state dimension
   int n_aug_;
 
+  // Dimension of measurement vector
+  int n_z_;
+
   ///* Sigma point spreading parameter
   double lambda_;
   double lambda_aug_;
@@ -82,7 +85,7 @@ public:
   MatrixXd R_laser_;
 
   // R matrix for Radar sensor
-  MatrixXd R_radar_
+  MatrixXd R_radar_;
 
 
 

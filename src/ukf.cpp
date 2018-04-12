@@ -60,33 +60,34 @@ UKF::UKF() {
 
   n_x_ = 5;
   n_aug_ = 7;
-  lambda_ = 3 - n_x_;
-  lambda_aug_ = 3 - n_aug_;
+  n_z_ = 3;
+  lambda_ = 3 - n_aug_;
 
-  double weight_0 = lambda_aug_/(lambda_aug_+n_aug);
+  double weight_0 = lambda_/(lambda_+n_aug_);
   weights_(0) = weight_0;
   for (int i=1; i<2*n_aug_+1; i++) {  //2n+1 weights
-    double weight = 0.5/(n_aug_+lambda_aug_);
+    double weight = 0.5/(n_aug_+lambda_);
     weights_(i) = weight;
   }
 
   R_laser_ = MatrixXd(2, 2);
   R_radar_ = MatrixXd(3, 3);
-  H_laser_ = MatrixXd(2, 4);
+  H_laser_ = MatrixXd(2, 5);
+  Xsig_pred_ = MatrixXd(n_x_,2*n_aug_+1);
 
   R_laser_<< std_laspx_*std_laspx_,0,
 		     0, std_laspx_*std_laspx_;
 
-  R_radar_<< std_radr*std_radr_,0,0,
+  R_radar_<< std_radr_*std_radr_,0,0,
 		     0, std_radphi_*std_radphi_,0,
 			 0,0, std_radrd_*std_radrd_;
 
-  H_laser_<<1,0,0,0,
-  		    0,1,0,0;
+  H_laser_<<1,0,0,0,0,
+  		    0,1,0,0,0;
 
   MatrixXd Q = MatrixXd(2,2);
-  Q << pow(std_a,2),0,
-       0,pow(std_yawdd,2);
+  Q << pow(std_a_,2),0,
+       0,pow(std_yawdd_,2);
 
   x_<< 0,0,0,0,0;
 
@@ -95,6 +96,7 @@ UKF::UKF() {
 	   0,0,1,0,0,
 	   0,0,0,1,0,
 	   0,0,0,0,1;
+  Xsig_pred_.fill(0.0);
 
 
 }
@@ -116,9 +118,9 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
 
 	if(meas_package.sensor_type_ == MeasurementPackage::RADAR){
 
-		double rho = measurement_pack.raw_measurements_[0];
-		double theta = measurement_pack.raw_measurements_[1];
-		double rho_dot = measurement_pack.raw_measurements_[2];
+		double rho = meas_package.raw_measurements_[0];
+		double theta = meas_package.raw_measurements_[1];
+		double rho_dot = meas_package.raw_measurements_[2];
 
 		x_(0) = rho*cos(theta);
 		x_(1) = rho*sin(theta);
@@ -126,15 +128,23 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
 
 	}else {
 
-		x_(0) = measurement_pack.raw_measurements_[0];
-		x_(1) = measurement_pack.raw_measurements_[1];
+		x_(0) = meas_package.raw_measurements_[0];
+		x_(1) = meas_package.raw_measurements_[1];
 
 	}
-
-
+	previous_timestamp_ = meas_package.timestamp_;
+	is_initialized_ = true;
+	return;
   }
+  float dt = (meas_package.timestamp_ - previous_timestamp_) / 1000000.0;	//dt - expressed in seconds
+  previous_timestamp_ = meas_package.timestamp_;
+  Prediction(dt);
 
-
+  if ((meas_package.sensor_type_ == MeasurementPackage::RADAR)&(use_radar_)) {
+	  UpdateRadar(meas_package);
+  }else if ((meas_package.sensor_type_ == MeasurementPackage::LASER)&(use_laser_)){
+	  UpdateLidar(meas_package);
+  }
 }
 
 /**
@@ -149,6 +159,106 @@ void UKF::Prediction(double delta_t) {
   Complete this function! Estimate the object's location. Modify the state
   vector, x_. Predict sigma points, the state, and the state covariance matrix.
   */
+
+  // Calculation of augmented sigma points from the state vector and P matrix
+
+  // Augmented state vector
+  VectorXd x_aug = VectorXd(n_aug_);
+
+  //augmented state covariance matrix
+  MatrixXd P_aug = MatrixXd(n_aug_,n_aug_);
+
+  //create sigma point matrix
+  MatrixXd Xsig_aug = MatrixXd(n_aug_, 2 * n_aug_ + 1);
+
+  x_aug.fill(0.0);
+  x_aug.head(n_x_) = x_;
+
+  P_aug.fill(0.0);
+  P_aug.topLeftCorner(n_x_,n_x_) = P_;
+  P_aug.bottomRightCorner(n_aug_- n_x_, n_aug_- n_x_) = Q_;
+
+  //create square root matrix
+  MatrixXd A = P_aug.llt().matrixL();
+
+  //create augmented sigma points
+  Xsig_aug.col(0)  = x_aug;
+
+  //set remaining sigma points
+  for (int i = 0; i < n_aug_; i++)
+  {
+    Xsig_aug.col(i+1)     = x_aug + sqrt(lambda_+n_aug_) * A.col(i);
+    Xsig_aug.col(i+1+n_aug_) = x_aug - sqrt(lambda_+n_aug_) * A.col(i);
+  }
+
+  //predict sigma points
+  for (int i = 0; i< 2*n_aug_+1; i++)
+  {
+    //extract values for better readability
+    double p_x = Xsig_aug(0,i);
+    double p_y = Xsig_aug(1,i);
+    double v = Xsig_aug(2,i);
+    double yaw = Xsig_aug(3,i);
+    double yawd = Xsig_aug(4,i);
+    double nu_a = Xsig_aug(5,i);
+    double nu_yawdd = Xsig_aug(6,i);
+
+    //predicted state values
+    double px_p, py_p;
+
+    //avoid division by zero
+    if (fabs(yawd) > 0.001) {
+        px_p = p_x + v/yawd * ( sin (yaw + yawd*delta_t) - sin(yaw));
+        py_p = p_y + v/yawd * ( cos(yaw) - cos(yaw+yawd*delta_t) );
+    }
+    else {
+        px_p = p_x + v*delta_t*cos(yaw);
+        py_p = p_y + v*delta_t*sin(yaw);
+    }
+
+    double v_p = v;
+    double yaw_p = yaw + yawd*delta_t;
+    double yawd_p = yawd;
+
+    //add noise
+    px_p = px_p + 0.5*nu_a*delta_t*delta_t * cos(yaw);
+    py_p = py_p + 0.5*nu_a*delta_t*delta_t * sin(yaw);
+    v_p = v_p + nu_a*delta_t;
+
+    yaw_p = yaw_p + 0.5*nu_yawdd*delta_t*delta_t;
+    yawd_p = yawd_p + nu_yawdd*delta_t;
+
+    //write predicted sigma point into right column
+    Xsig_pred_(0,i) = px_p;
+    Xsig_pred_(1,i) = py_p;
+    Xsig_pred_(2,i) = v_p;
+    Xsig_pred_(3,i) = yaw_p;
+    Xsig_pred_(4,i) = yawd_p;
+  }
+
+  // vector for storing difference between current sigma point and mean
+  VectorXd x_diff = VectorXd(n_x_,n_x_);
+  VectorXd x_pred = VectorXd(n_x_,n_x_);
+  MatrixXd P_pred = MatrixXd(n_x_,n_x_);
+
+  for(int i = 0;i<2*n_aug_+1;i++){
+		  x_pred += weights_(i)*Xsig_pred_.col(i);
+  }
+
+  for(int i = 0; i<2*n_aug_+1;i++){
+	  x_diff = (Xsig_pred_.col(i)-x_pred);
+
+	  //angle normalization
+	  while (x_diff(3)> M_PI) x_diff(3)-=2.*M_PI;
+	  while (x_diff(3)<-M_PI) x_diff(3)+=2.*M_PI;
+
+	  P_pred += weights_(i)*x_diff*x_diff.transpose();
+
+  }
+
+  x_ = x_pred;
+  P_ = P_pred;
+
 }
 
 /**
@@ -164,6 +274,19 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
 
   You'll also need to calculate the lidar NIS.
   */
+  VectorXd z = meas_package.raw_measurements_;
+  VectorXd y = z - H_laser_ * x_;
+  MatrixXd Ht = H_laser_.transpose();
+  MatrixXd S = H_laser_ * P_ * Ht + R_laser_;
+  MatrixXd Si = S.inverse();
+  MatrixXd PHt = P_ * Ht;
+  MatrixXd K = PHt * Si;
+
+  //new estimate
+  x_ = x_ + (K * y);
+  long x_size = x_.size();
+  MatrixXd I = MatrixXd::Identity(x_size, x_size);
+  P_ = (I - K * H_laser_) * P_;
 }
 
 /**
@@ -179,4 +302,80 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
 
   You'll also need to calculate the radar NIS.
   */
+  MatrixXd Zsig = MatrixXd(n_z_,2*n_aug_+1);
+
+  //transform sigma points into measurement space
+  for (int i = 0; i < 2 * n_aug_ + 1; i++) {  //2n+1 simga points
+
+    // extract values for better readibility
+    double p_x = Xsig_pred_(0,i);
+    double p_y = Xsig_pred_(1,i);
+    double v  = Xsig_pred_(2,i);
+    double yaw = Xsig_pred_(3,i);
+
+    double v1 = cos(yaw)*v;
+    double v2 = sin(yaw)*v;
+
+    // measurement model
+    Zsig(0,i) = sqrt(p_x*p_x + p_y*p_y);                        //r
+    Zsig(1,i) = atan2(p_y,p_x);                                 //phi
+    Zsig(2,i) = (p_x*v1 + p_y*v2 ) / sqrt(p_x*p_x + p_y*p_y);   //r_dot
+  }
+
+  //mean predicted measurement
+  VectorXd z_pred = VectorXd(n_z_);
+  z_pred.fill(0.0);
+  for (int i=0; i < 2*n_aug_+1; i++) {
+      z_pred = z_pred + weights_(i) * Zsig.col(i);
+  }
+
+  //innovation covariance matrix S
+  MatrixXd S = MatrixXd(n_z_,n_z_);
+  S.fill(0.0);
+  for (int i = 0; i < 2 * n_aug_ + 1; i++) {  //2n+1 simga points
+    //residual
+    VectorXd z_diff = Zsig.col(i) - z_pred;
+
+    //angle normalization
+    while (z_diff(1)> M_PI) z_diff(1)-=2.*M_PI;
+    while (z_diff(1)<-M_PI) z_diff(1)+=2.*M_PI;
+
+    S = S + weights_(i) * z_diff * z_diff.transpose();
+  }
+  S = S + R_radar_;
+
+  MatrixXd Tc = MatrixXd(n_x_, n_z_);
+  Tc.fill(0.0);
+  for(int i = 0;i<2*n_aug_+1;i++){
+      MatrixXd x_diff = (Xsig_pred_.col(i) - x_);
+      MatrixXd z_diff = (Zsig.col(i) - z_pred);
+
+      //angle normalization
+      while (x_diff(3)> M_PI) x_diff(3)-=2.*M_PI;
+      while (x_diff(3)<-M_PI) x_diff(3)+=2.*M_PI;
+
+
+      //angle normalization
+      while (z_diff(1)> M_PI) z_diff(1)-=2.*M_PI;
+      while (z_diff(1)<-M_PI) z_diff(1)+=2.*M_PI;
+
+      Tc += weights_(i)*x_diff*z_diff.transpose();
+  }
+  //calculate Kalman gain K;
+
+   MatrixXd k = Tc*S.inverse();
+
+   //update state mean and covariance matrix
+   VectorXd z = meas_package.raw_measurements_;
+   VectorXd z_diff = z - z_pred;
+
+   //angle normalization
+   while (z_diff(1)> M_PI) z_diff(1)-=2.*M_PI;
+   while (z_diff(1)<-M_PI) z_diff(1)+=2.*M_PI;
+
+   x_ = x_ + k * z_diff;
+
+   P_ = P_ - k*S*k.transpose();
+
+
 }
