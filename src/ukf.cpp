@@ -87,8 +87,8 @@ UKF::UKF() {
   H_laser_<<1,0,0,0,0,
   		    0,1,0,0,0;
 
-  MatrixXd Q = MatrixXd(2,2);
-  Q << pow(std_a_,2),0,
+  Q_ = MatrixXd(2,2);
+  Q_ << pow(std_a_,2),0,
        0,pow(std_yawdd_,2);
 
   x_<< 0,0,0,0,0;
@@ -239,8 +239,8 @@ void UKF::Prediction(double delta_t) {
   }
 
   // vector for storing difference between current sigma point and mean
-  VectorXd x_diff = VectorXd(n_x_,n_x_);
-  VectorXd x_pred = VectorXd(n_x_,n_x_);
+  VectorXd x_diff = VectorXd(n_x_);
+  VectorXd x_pred = VectorXd(n_x_);
   MatrixXd P_pred = MatrixXd(n_x_,n_x_);
 
   for(int i = 0;i<2*n_aug_+1;i++){
