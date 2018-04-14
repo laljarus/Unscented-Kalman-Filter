@@ -5,4 +5,4 @@ The main.cpp is modified a little from the starter code with regard to data logg
 
 The following figure shows the estimated position of the bicycle by the UKF and the measured position using the radar and laser sensors. The UKF tracks the bicycle accurately and smoothens the measurement data which is the prime objective of the algorithm.
 
-![alt text](Figure_1.png)
+![alt text] (Figure_1.png)
