@@ -44,7 +44,7 @@ int main()
   out_file.open("obj_pose-laser-radar-output.txt");
   if (out_file.is_open()){
   
-    out_file<<"Px \tPy \tVx \tVy \tPx_rmse \tPy_rmse \tVx_rmse \tVy_rmse \tSensorType"<<endl;
+    out_file<<"Px \tPy \tVx \tVy \tPx_rmse \tPy_rmse \tVx_rmse \tVy_rmse \tNIS \tYaw \tYaw Rate \tSensorType"<<endl;
   
   }else{
     cout<<"The output log file cannot be opened"<<endl;
@@ -151,6 +151,9 @@ int main()
 		              out_file<<RMSE(1)<<"\t";
 		              out_file<<RMSE(2)<<"\t";
 		              out_file<<RMSE(3)<<"\t";
+		              out_file<<ukf.nis_<<"\t";
+		              out_file<<yaw<<"\t";
+		              out_file<<ukf.x_(4)<<"\t";
 		              out_file<<meas_package.sensor_type_<<endl;
 		   }
 
