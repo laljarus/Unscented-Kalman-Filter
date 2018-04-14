@@ -71,6 +71,9 @@ public:
   // Dimension of measurement vector
   int n_z_;
 
+  // Nis
+  double nis_;
+
   ///* Sigma point spreading parameter
   double lambda_;
   double lambda_aug_;
@@ -123,6 +126,11 @@ public:
    * @param meas_package The measurement at k+1
    */
   void UpdateRadar(MeasurementPackage meas_package);
+  void AugmentedSigmaPoints(MatrixXd& Xsig_out);
+  void SigmaPointPrediction(double delta_t,MatrixXd Xsig_in, MatrixXd& Xsig_out);
+  void PredictMeanAndCovariance(MatrixXd Xsig_in,VectorXd& x_pred, MatrixXd& P_pred);
+  void PredictRadarMeasurement(MatrixXd& Xsig_pred_in, VectorXd& z_out, MatrixXd& S_out,MatrixXd& Zsig_out);
+
 };
 
 #endif /* UKF_H */
